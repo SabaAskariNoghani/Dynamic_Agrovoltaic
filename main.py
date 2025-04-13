@@ -18,7 +18,7 @@ run_optimization_mode = True  # 🔁 Set to False to skip optimization and only 
 # 📍 Location and Time Setup
 # ------------------------------------------
 latitude = 41.1171
-longitude = 16.8719
+longitude = 16.87191
 tz = 'Europe/Rome'
 bari = Location(latitude, longitude, tz=tz)
 
