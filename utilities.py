@@ -117,6 +117,153 @@ def setup_animation(optimal_angles, sun_positions, local_corners, H, plant_bound
     ani = animation.FuncAnimation(fig, update, frames=len(times), interval=100, blit=False)
     plt.show()
 
+
+def setup_animation1(optimal_angles, sun_positions, local_corners, H, plant_bounds, times):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from mpl_toolkits.mplot3d import Axes3D
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+    import matplotlib.animation as animation
+    from matplotlib.lines import Line2D
+
+    plant_bound_neg_x = plant_bounds['neg_x']
+    plant_bound_pos_x = plant_bounds['pos_x']
+    plant_bound_neg_y = plant_bounds['neg_y']
+    plant_bound_pos_y = plant_bounds['pos_y']
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    def set_axes_equal(ax):
+        x_limits = [plant_bound_neg_x, plant_bound_pos_x]
+        y_limits = [plant_bound_neg_y, plant_bound_pos_y]
+        z_limits = [0, 6]
+
+        ax.set_xlim(x_limits)
+        ax.set_ylim(y_limits)
+        ax.set_zlim(z_limits)
+
+        x_range = x_limits[1] - x_limits[0]
+        y_range = y_limits[1] - y_limits[0]
+        z_range = z_limits[1] - z_limits[0]
+        max_range = max(x_range, y_range, z_range)
+        ax.set_box_aspect([x_range / max_range, y_range / max_range, z_range / max_range])
+
+    set_axes_equal(ax)
+    ax.set_xlabel('X (m)')
+    ax.set_ylabel('Y (m)')
+    ax.set_zlabel('Z (m)')
+    ax.set_title("3D View: Panel, Sun, Shadow, and Normals")
+
+    # Draw ground
+    grid_x = np.linspace(plant_bound_neg_x, plant_bound_pos_x, 10)
+    grid_y = np.linspace(plant_bound_neg_y, plant_bound_pos_y, 10)
+    Xg, Yg = np.meshgrid(grid_x, grid_y)
+    ax.plot_surface(Xg, Yg, np.zeros_like(Xg), color='green', alpha=0.3)
+
+    # Initialize panel, shadow, and diagonal line
+    panel_poly = Poly3DCollection([], alpha=0.7, edgecolor='black')
+    shadow_poly = Poly3DCollection([], facecolors='gray', alpha=0.5, edgecolor='black')
+
+    # --- FIX: Dummy line to avoid crash ---
+    dummy_line = np.array([[[0, 0, 0], [0, 0, 0]]])
+    diagonal_line = Line3DCollection(dummy_line, colors='black', linewidths=2)
+
+    ax.add_collection3d(panel_poly)
+    ax.add_collection3d(shadow_poly)
+    ax.add_collection3d(diagonal_line)
+
+    # Initialize quivers for arrows
+    panel_normal_arrow = ax.quiver(0, 0, 0, 0, 0, 0, color='blue', length=2, normalize=True)
+    vertical_reference_arrow = ax.quiver(0, 0, 0, 0, 0, 1, color='gray', length=2, normalize=True)
+
+    # Legend
+    legend_elements = [
+        Line2D([0], [0], color='blue', lw=2, label='Panel Normal Vector'),
+        Line2D([0], [0], color='gray', lw=2, label='Zero Azimuth & Tilt (Vertical)')
+    ]
+    ax.legend(handles=legend_elements, loc='upper left')
+
+    def composite_rotation(phi, alpha):
+        Rz = np.array([
+            [np.cos(phi), -np.sin(phi), 0],
+            [np.sin(phi), np.cos(phi), 0],
+            [0, 0, 1]
+        ])
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(alpha), -np.sin(alpha)],
+            [0, np.sin(alpha), np.cos(alpha)]
+        ])
+        return Rz @ Rx
+
+    def compute_shadow(phi_p, alpha_p, S, local_corners, H):
+        R = composite_rotation(phi_p, alpha_p)
+        global_corners = (R @ local_corners.T).T + np.array([0, 0, H])
+
+        if S[2] <= 0:
+            return global_corners, np.full_like(global_corners, np.nan)
+
+        panel_normal = R @ np.array([0, 0, 1])
+
+        if np.abs(np.dot(panel_normal, S)) < 1e-6:
+            shadow_corners = np.zeros((4, 3))
+        else:
+            shadow_corners = np.array([C - (C[2] / S[2]) * S for C in global_corners])
+            shadow_corners[:, 2] = 0
+
+        return global_corners, shadow_corners
+
+    def update(frame):
+        nonlocal panel_normal_arrow
+        phi_p, alpha_p = optimal_angles[frame]
+        phi_s_deg, alpha_s_deg = sun_positions[frame]
+
+        phi_s = np.radians(phi_s_deg)
+        alpha_s = np.radians(alpha_s_deg)
+        S = np.array([
+            np.cos(alpha_s) * np.cos(phi_s),
+            np.cos(alpha_s) * np.sin(phi_s),
+            np.sin(alpha_s)
+        ])
+
+        global_corners, shadow_corners = compute_shadow(phi_p, alpha_p, S, local_corners, H)
+
+        # Front and back face (fixed color)
+        front_face = [global_corners]         # Normal order
+        back_face = [global_corners[::-1]]     # Reversed order
+
+        panel_poly.set_verts(front_face + back_face)
+        panel_poly.set_facecolor(['cyan', 'lightgray'])  # Always cyan front, gray back
+
+        shadow_poly.set_verts([shadow_corners])
+
+        # Diagonal line from corner 0 to corner 2
+        diag = np.array([[global_corners[0], global_corners[2]]])
+        diagonal_line.set_segments(diag)
+
+        # Remove previous panel normal arrow
+        panel_normal_arrow.remove()
+
+        # Compute new panel normal
+        R = composite_rotation(phi_p, alpha_p)
+        normal_vector = R @ np.array([0, 0, 1])
+
+        # Center of panel
+        center = np.mean(global_corners, axis=0)
+
+        # Update panel normal arrow
+        panel_normal_arrow = ax.quiver(center[0], center[1], center[2],
+                                       normal_vector[0], normal_vector[1], normal_vector[2],
+                                       color='blue', length=2, normalize=True)
+
+        return panel_poly, shadow_poly, panel_normal_arrow, diagonal_line
+
+    ani = animation.FuncAnimation(fig, update, frames=len(times), interval=200, blit=False)
+    plt.show()
+
+
+
 # ------------------------------------------
 # Optimization Functions
 # ------------------------------------------
@@ -169,56 +316,84 @@ def shadow_constraint(x, S, plant_bounds, local_corners, H):
 
     return -penalty
 
-def shadow_constraint2(x, S, plant_bounds, local_corners, H):
+
+def shadow_constraint_hard(x, S, plant_bounds, local_corners, H):
     _, shadow_corners = compute_shadow(x[0], x[1], S, local_corners, H)
 
     if np.all(shadow_corners == 0):
-        return -10.0  # Heavy violation
+        return -1.0  # Heavy violation if shadow cannot be computed
 
-    penalty = 0.0
-    margin = 0.01  # Small buffer
+    margin = 0.01  # Small safe margin
+
+    min_x = plant_bounds['neg_x'] + margin
+    max_x = plant_bounds['pos_x'] - margin
+    min_y = plant_bounds['neg_y'] + margin
+    max_y = plant_bounds['pos_y'] - margin
+
+    min_violation = np.inf  # Track worst violation
 
     for corner in shadow_corners:
-        x, y = corner[0], corner[1]
-        if x > plant_bounds['pos_x'] - margin:
-            penalty += (x - (plant_bounds['pos_x'] - margin))**2
-        elif x < plant_bounds['neg_x'] + margin:
-            penalty += ((plant_bounds['neg_x'] + margin) - x)**2
-        if y > plant_bounds['pos_y'] - margin:
-            penalty += (y - (plant_bounds['pos_y'] - margin))**2
-        elif y < plant_bounds['neg_y'] + margin:
-            penalty += ((plant_bounds['neg_y'] + margin) - y)**2
+        x_c, y_c = corner[0], corner[1]
+        violations = [
+            x_c - min_x,     # must be >= 0
+            max_x - x_c,     # must be >= 0
+            y_c - min_y,     # must be >= 0
+            max_y - y_c      # must be >= 0
+        ]
+        min_violation = min(min_violation, *violations)
 
-    return -penalty
+    return min_violation  # Must be ≥ 0 to satisfy
 
 
 def optimize_panel_angles(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment=1.0):
     if np.degrees(alpha_s) < MIN_SUN_ALTITUDE_DEG:
         phi_p = np.arctan2(S[1], S[0])
-        alpha_p = np.pi / 2
+        alpha_p = np.pi / 2  # Fully vertical panel if Sun too low
         return phi_p, alpha_p
 
-    x0 = [np.arctan2(S[1], S[0]), np.arccos(S[2])]
-    bounds = [(0, 2 * np.pi), (0, np.pi / 2)]
+    x0 = [np.arctan2(S[1], S[0]), np.arccos(S[2])]  # Initial guess: face toward sun
+    azimuth_bounds = (-2 * np.pi / 3, 2 * np.pi / 3)  # ±120° in radians
+    tilt_bounds = (np.radians(5), np.pi / 2)     # 5° to 60° in radians
 
-    constraints = [{'type': 'ineq', 'fun': shadow_constraint2, 'args': (S, plant_bounds, local_corners, H)}]
+    bounds = [azimuth_bounds, tilt_bounds]
 
-    result = minimize(objective_goal_seeking, x0, args=(S, target_alignment), method='SLSQP', options={'ftol': 1e-9, 'disp': True}, bounds=bounds, constraints=constraints)
+    # constraints = [{'type': 'ineq', 'fun': shadow_constraint2, 'args': (S, plant_bounds, local_corners, H)}]
+    constraints = [{'type': 'ineq', 'fun': shadow_constraint_hard, 'args': (S, plant_bounds, local_corners, H)}]
+
+    result = minimize(
+        objective_goal_seeking, x0,
+        args=(S, target_alignment),
+        method='SLSQP',
+        options={'ftol': 1e-9, 'disp': True},
+        bounds=bounds,
+        constraints=constraints
+    )
 
     return tuple(result.x) if result.success else (x0[0], x0[1])
+
 
 def optimize_panel_angles_no_constraints(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment=1.0):
     if np.degrees(alpha_s) < MIN_SUN_ALTITUDE_DEG:
         phi_p = np.arctan2(S[1], S[0])
-        alpha_p = np.pi / 2
+        alpha_p = np.pi / 2  # Fully vertical panel if Sun too low
         return phi_p, alpha_p
 
-    x0 = [np.arctan2(S[1], S[0]), np.arccos(S[2])]
-    bounds = [(0, 2 * np.pi), (0, np.pi / 2)]
+    x0 = [np.arctan2(S[1], S[0]), np.arccos(S[2])]  # Initial guess: face toward sun
+    azimuth_bounds = (-2 * np.pi / 3, 2 * np.pi / 3)  # ±120° in radians
+    tilt_bounds = (np.radians(5), np.pi / 2)     # 5° to 60° in radians
 
-    result = minimize(objective_goal_seeking, x0, args=(S,target_alignment), method='SLSQP', options={'ftol': 1e-9, 'disp': True}, bounds=bounds)
+    bounds = [azimuth_bounds, tilt_bounds]
+
+    result = minimize(
+        objective_goal_seeking, x0,
+        args=(S, target_alignment),
+        method='SLSQP',
+        options={'ftol': 1e-9, 'disp': True},
+        bounds=bounds
+    )
 
     return tuple(result.x) if result.success else (x0[0], x0[1])
+
 
 
 def figure_one(solpos, times, min_sun_altitude_deg=35, save_path="figure1_combined_vertical.png"):
@@ -341,10 +516,10 @@ def figure_two(optimal_angles_with, optimal_angles_without, times, save_path="fi
     ax2.set_xticks(time_labels[::12])
 
     # Add shared legend using proxy artists
-    constrained_proxy = Line2D([0], [0], color='forestgreen', linewidth=3, label='Constrained')
-    unconstrained_proxy = Line2D([0], [0], color='gray', linestyle='--', linewidth=3, label='Unconstrained')
+    constrained_proxy = Line2D([0], [0], color='forestgreen', linewidth=3, label='Pointwise Constrained')
+    unconstrained_proxy = Line2D([0], [0], color='gray', linestyle='--', linewidth=3, label='Unconstrained Shadows')
     ax1.legend(handles=[constrained_proxy, unconstrained_proxy], fontsize=12, loc='upper right')
-    ax2.legend(handles=[constrained_proxy, unconstrained_proxy], fontsize=12, loc='lower left')
+    # ax2.legend(handles=[constrained_proxy, unconstrained_proxy], fontsize=12, loc='lower left')
 
     # Align constrained line plots
     ax1.set_xlim(0, len(times) - 1)
@@ -413,7 +588,7 @@ def figure_three(alignment_history, required_radiation, save_path="figure3_radia
                 fontsize=12, ha='center', va='bottom')
     
     # Place separate text label near the midpoint
-    ax.text(x_half + 0.03, y_half + 0.03 * (max(radiation_values) - min(radiation_values)),  # slightly above arrow
+    ax.text(x_half + 0.06, y_half + 0.03 * (max(radiation_values) - min(radiation_values)),  # slightly above arrow
             'Refinement Direction', fontsize=14, ha='center')
 
     ax.text(1, required_radiation + 0.01 * (max(radiation_values) - min(radiation_values)),
@@ -421,83 +596,6 @@ def figure_three(alignment_history, required_radiation, save_path="figure3_radia
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
-    plt.show()
-
-
-def render_shadow_frame1(phi_p, alpha_p, S, local_corners, H, plant_bounds, title=None, save_path=None):
-    """
-    Renders a 3D plot showing panel orientation and shadow projection at a given timestamp.
-
-    Parameters:
-        phi_p, alpha_p (float): Panel azimuth and tilt angles in radians
-        S (ndarray): Sun direction vector
-        local_corners (ndarray): Panel corner coordinates
-        H (float): Panel height
-        plant_bounds (dict): Plant boundary extents
-        title (str): Optional plot title
-        save_path (str): If provided, saves the figure to this path
-    """
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-    from utilities import compute_shadow
-
-    # Transform panel corners
-    Rx = np.array([[1, 0, 0],
-                   [0, np.cos(alpha_p), -np.sin(alpha_p)],
-                   [0, np.sin(alpha_p), np.cos(alpha_p)]])
-    Rz = np.array([[np.cos(phi_p), -np.sin(phi_p), 0],
-                   [np.sin(phi_p), np.cos(phi_p), 0],
-                   [0, 0, 1]])
-    R = Rz @ Rx
-
-    panel_world = (R @ local_corners.T).T + np.array([0, 0, H])
-    _, shadow_corners = compute_shadow(phi_p, alpha_p, S, local_corners, H)
-
-    fig = plt.figure(figsize=(4, 4))
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Draw panel
-    panel = Poly3DCollection([panel_world], alpha=0.6, facecolor='dodgerblue', edgecolor='k')
-    ax.add_collection3d(panel)
-
-    # Draw shadow on ground
-    if not np.any(np.isnan(shadow_corners)):
-        shadow = Poly3DCollection([shadow_corners], alpha=0.4, facecolor='gray', edgecolor='black')
-        ax.add_collection3d(shadow)
-
-    # Draw plant bounds as rectangle
-    x_min, x_max = plant_bounds['neg_x'], plant_bounds['pos_x']
-    y_min, y_max = plant_bounds['neg_y'], plant_bounds['pos_y']
-
-    # Draw plant bounds in 3D using lines
-    ax.plot([x_min, x_max, x_max, x_min, x_min],
-            [y_min, y_min, y_max, y_max, y_min],
-            [0,     0,     0,     0,     0    ], color='green',
-            linestyle='--', linewidth=2, label='Plant Bounds')
-
-    # Fill the plant bounds area with green color
-    plant_bounds_corners = np.array([
-        [x_min, y_min, 0],
-        [x_max, y_min, 0],
-        [x_max, y_max, 0],
-        [x_min, y_max, 0]
-    ])
-    plant_bounds_poly = Poly3DCollection([plant_bounds_corners], alpha=0.3, facecolor='green')
-    ax.add_collection3d(plant_bounds_poly)
-
-    # Axes settings
-    ax.set_xlim(-6, 6)
-    ax.set_ylim(-10, 10)
-    ax.set_zlim(0, 10)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-
-    if title:
-        ax.set_title(title)
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300)
     plt.show()
 
 
@@ -586,8 +684,6 @@ def render_shadow_frame(phi_p, alpha_p, S, local_corners, H, plant_bounds, title
     if save_path:
         plt.savefig(save_path, dpi=300)
     plt.show()
-
-
 
 
 def figure_four(optimal_angles, sun_positions, times, local_corners, H, plant_bounds,alphabet):

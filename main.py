@@ -5,7 +5,7 @@ from pvlib.location import Location
 from utilities import setup_animation, compute_shadow, optimize_panel_angles
 import numpy as np
 from utilities import figure_one, figure_two, figure_three, figure_four
-from utilities import shadow_constraint2, optimize_panel_angles_no_constraints
+from utilities import shadow_constraint_hard, optimize_panel_angles_no_constraints
 import pickle
 import os
 
@@ -50,9 +50,13 @@ plant_bounds = {
     'neg_y': -8
 }
 
-MIN_SUN_ALTITUDE_DEG = 35
-required_radiation = 78200
-delta = 0.015
+MIN_SUN_ALTITUDE_DEG = 35  # Minimum sun altitude for shadow calculations
+# MIN_SUN_ALTITUDE_DEG = 10  # Minimum sun altitude for shadow calculations
+
+required_radiation = 75000
+# required_radiation = 7820
+
+delta = 0.04  # Step size for alignment target adjustment
 
 # ------------------------------------------
 # 🌞 Radiation Estimation Function
@@ -98,7 +102,7 @@ def run_optimization(sun_positions, GHI, constraint_problem, target_alignment_in
                 phi_p, alpha_p = optimize_panel_angles_no_constraints(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment)
 
             optimal_angles.append((phi_p, alpha_p))
-            penalty = -shadow_constraint2((phi_p, alpha_p), S, plant_bounds, local_corners, H)
+            penalty = -shadow_constraint_hard((phi_p, alpha_p), S, plant_bounds, local_corners, H)
             constraint_penalties_step.append(penalty)
             _, shadow_corners = compute_shadow(phi_p, alpha_p, S, local_corners, H)
             total_plant_radiation += estimate_radiation(shadow_corners, GHI[i])
