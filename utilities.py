@@ -345,26 +345,30 @@ def shadow_constraint_hard(x, S, plant_bounds, local_corners, H):
     return min_violation  # Must be ≥ 0 to satisfy
 
 
-def optimize_panel_angles(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment=1.0):
+def optimize_panel_angles(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment=1.0, x0_prev=None):
     if np.degrees(alpha_s) < MIN_SUN_ALTITUDE_DEG:
         phi_p = np.arctan2(S[1], S[0])
         alpha_p = np.pi / 2  # Fully vertical panel if Sun too low
         return phi_p, alpha_p
 
-    x0 = [np.arctan2(S[1], S[0]), np.arccos(S[2])]  # Initial guess: face toward sun
+    # x0 = [np.arctan2(S[1], S[0]), np.arccos(S[2])]  # Initial guess: face toward sun
+    if x0_prev is None:
+        x0 = [np.arctan2(S[1], S[0]), np.arccos(S[2])]
+    else:
+        x0 = x0_prev
+
     azimuth_bounds = (-2 * np.pi / 3, 2 * np.pi / 3)  # ±120° in radians
-    tilt_bounds = (np.radians(5), np.pi / 2)     # 5° to 60° in radians
+    tilt_bounds = (np.radians(5), np.pi / 2)     # 5° to 90° in radians
 
     bounds = [azimuth_bounds, tilt_bounds]
 
-    # constraints = [{'type': 'ineq', 'fun': shadow_constraint2, 'args': (S, plant_bounds, local_corners, H)}]
     constraints = [{'type': 'ineq', 'fun': shadow_constraint_hard, 'args': (S, plant_bounds, local_corners, H)}]
 
     result = minimize(
         objective_goal_seeking, x0,
         args=(S, target_alignment),
         method='SLSQP',
-        options={'ftol': 1e-9, 'disp': True},
+        options={'ftol': 1e-9, 'disp': True, 'maxiter': 50000, 'eps': 1e-11},
         bounds=bounds,
         constraints=constraints
     )

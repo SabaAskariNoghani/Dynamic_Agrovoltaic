@@ -87,6 +87,8 @@ def run_optimization(sun_positions, GHI, constraint_problem, target_alignment_in
         total_plant_radiation = 0
         constraint_penalties_step = []
 
+        x0_prev = None  # Start fresh
+
         for i, (phi_s_deg, alpha_s_deg) in enumerate(sun_positions):
             phi_s = np.radians(phi_s_deg)
             alpha_s = np.radians(alpha_s_deg)
@@ -97,7 +99,8 @@ def run_optimization(sun_positions, GHI, constraint_problem, target_alignment_in
             ])
 
             if constraint_problem:
-                phi_p, alpha_p = optimize_panel_angles(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment)
+                phi_p, alpha_p = optimize_panel_angles(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment, x0_prev)
+                 #x0_prev = [phi_p, alpha_p]  # Save for next time step
             else:
                 phi_p, alpha_p = optimize_panel_angles_no_constraints(S, alpha_s, local_corners, MIN_SUN_ALTITUDE_DEG, H, plant_bounds, target_alignment)
 
