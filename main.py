@@ -12,7 +12,7 @@ import os
 # ------------------------------------------
 # ⚙️ Mode Selection
 # ------------------------------------------
-run_optimization_mode = True  # 🔁 Set to False to skip optimization and only visualize
+run_optimization_mode = False  # 🔁 Set to False to skip optimization and only visualize
 
 # ------------------------------------------
 # 📍 Location and Time Setup
@@ -53,23 +53,29 @@ plant_bounds = {
 MIN_SUN_ALTITUDE_DEG = 35  # Minimum sun altitude for shadow calculations
 # MIN_SUN_ALTITUDE_DEG = 10  # Minimum sun altitude for shadow calculations
 
-required_radiation = 75000
+required_radiation = 84000
 # required_radiation = 7820
 
-delta = 0.04  # Step size for alignment target adjustment
+delta = 0.02  # Step size for alignment target adjustment
 
 # ------------------------------------------
 # 🌞 Radiation Estimation Function
 # ------------------------------------------
+
 def estimate_radiation(shadow_corners, ghi):
     if np.any(np.isnan(shadow_corners)):
         return ghi  # No shadow = full radiation
 
-    plant_area = (plant_bounds['pos_x'] - plant_bounds['neg_x']) * (plant_bounds['pos_y'] - plant_bounds['neg_y'])
+    def polygon_area(points):
+        x = points[:, 0]
+        y = points[:, 1]
+        return 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+    plant_area = (plant_bounds['pos_x'] - plant_bounds['neg_x']) * \
+                 (plant_bounds['pos_y'] - plant_bounds['neg_y'])
+
     shadow_poly = shadow_corners[:, :2]
-    min_x, max_x = np.min(shadow_poly[:, 0]), np.max(shadow_poly[:, 0])
-    min_y, max_y = np.min(shadow_poly[:, 1]), np.max(shadow_poly[:, 1])
-    shadow_area = max(0, (max_x - min_x) * (max_y - min_y))
+    shadow_area = polygon_area(shadow_poly)
     unshaded_area = max(0, plant_area - shadow_area)
     return (unshaded_area / plant_area) * ghi
 

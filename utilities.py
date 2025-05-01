@@ -592,7 +592,7 @@ def figure_three(alignment_history, required_radiation, save_path="figure3_radia
                 fontsize=12, ha='center', va='bottom')
     
     # Place separate text label near the midpoint
-    ax.text(x_half + 0.06, y_half + 0.03 * (max(radiation_values) - min(radiation_values)),  # slightly above arrow
+    ax.text(x_half + 0.09, y_half + 0.03 * (max(radiation_values) - min(radiation_values)),  # slightly above arrow
             'Refinement Direction', fontsize=14, ha='center')
 
     ax.text(1, required_radiation + 0.01 * (max(radiation_values) - min(radiation_values)),
