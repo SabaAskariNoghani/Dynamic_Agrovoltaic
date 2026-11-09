@@ -154,5 +154,6 @@ GitHub: [@SabaAskariNoghani](https://github.com/SabaAskariNoghani)
 If you use this project in research, please credit the author and link to this repository:
 
 [https://github.com/SabaAskariNoghani/Dynamic_Agrovoltaic](https://github.com/SabaAskariNoghani/Dynamic_Agrovoltaic)
+This article Published in: 2025 IEEE International Conference on Systems, Man, and Cybernetics (SMC) with DOI 10.1109/SMC58881.2025.11343485
 
 No `LICENSE` file was visible in the repository when this README was prepared; public access to source code does not by itself grant a license to reuse or redistribute it.
